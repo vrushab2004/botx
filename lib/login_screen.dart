@@ -50,6 +50,26 @@ class LoginScreen extends StatelessWidget {
               },
               child: const Text("Register"),
             ),
+            TextButton(
+              onPressed: () async {
+                final email = emailController.text.trim();
+                if (email.isEmpty) {
+                  showSnackBar("Please enter your email.");
+                  return;
+                }
+
+                final authService = Provider.of<AuthService>(context, listen: false);
+                final emailExists = await authService.checkIfEmailExists(email);
+
+                if (emailExists) {
+                  await authService.sendPasswordResetEmail(email);
+                  showSnackBar("Password reset email sent.");
+                } else {
+                  showSnackBar("Email does not exist.");
+                }
+              },
+              child: const Text("Forgot Password?"),
+            ),
           ],
         ),
       ),

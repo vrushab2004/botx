@@ -1,15 +1,21 @@
+import 'dart:io';
+import 'package:tedz/FirstTab.dart' as first_tab;
 import 'package:tedz/theme/colors.dart';
+import 'package:tedz/user_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'FirstTab.dart';
 import 'OnGoing.dart';
 import 'SecondTab.dart';
 import 'addevent.dart' as addevent;
 import 'completed.dart';
+import 'event_details.dart' as event_model;  // Alias for EventDetails
 import 'login1.dart';
-
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 
 class Home extends StatefulWidget {
   const Home({Key? key}) : super(key: key);
@@ -19,7 +25,85 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  List<EventDetails> events = [];
+  List<event_model.EventDetails> events = [];
+  final UserService _userService = UserService();
+  final ImagePicker _picker = ImagePicker();
+  String? profileImageUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchProfileImageUrl();
+  }
+
+Future<String> _fetchFullName() async {
+  try {
+    String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    
+    // Check if userId is valid
+    if (userId.isEmpty) {
+      print('No user is currently signed in.');
+      return 'No Name'; // Default value if userId is not available
+    }
+
+    DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+    
+    if (userDoc.exists) {
+      return userDoc.get('fullName') ?? 'No Name'; // Use 'fullName' field
+    } else {
+      print('User document does not exist.');
+      return 'No Name'; // Default if document does not exist
+    }
+  } catch (e) {
+    print('Error fetching user data: $e');
+    return 'Error'; // Default value in case of error
+  }
+}
+
+  Future<void> _fetchProfileImageUrl() async {
+    try {
+      String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+      if (userId.isNotEmpty) {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+        if (userDoc.exists && userDoc.get('profileImageUrl') != null) {
+          setState(() {
+            profileImageUrl = userDoc.get('profileImageUrl');
+          });
+        }
+      }
+    } catch (e) {
+      print('Error fetching profile image URL: $e');
+    }
+  }
+
+  Future<void> _pickAndUploadImage() async {
+    try {
+      final XFile? image = await _picker.pickImage(source: ImageSource.gallery);
+      if (image != null) {
+        File imageFile = File(image.path);
+
+        String userId = FirebaseAuth.instance.currentUser?.uid ?? '';
+        if (userId.isNotEmpty) {
+          UploadTask uploadTask = FirebaseStorage.instance
+              .ref('profile_images/$userId.png')
+              .putFile(imageFile);
+
+          TaskSnapshot taskSnapshot = await uploadTask;
+          String downloadUrl = await taskSnapshot.ref.getDownloadURL();
+
+          await FirebaseFirestore.instance.collection('users').doc(userId).update({
+            'profileImageUrl': downloadUrl,
+          });
+
+          setState(() {
+            profileImageUrl = downloadUrl;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error picking and uploading image: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +123,10 @@ class _HomeState extends State<Home> {
                   },
                   child: Padding(
                     padding: const EdgeInsets.all(8.0),
-                    child: CircleAvatar(),
+                    child: CircleAvatar(
+                      backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl!) : null,
+                      child: profileImageUrl == null ? Icon(Icons.person) : null,
+                    ),
                   ),
                 );
               }),
@@ -92,14 +179,17 @@ class _HomeState extends State<Home> {
                             CircleAvatar(
                               radius: 40,
                               backgroundColor: Colors.purple,
+                              backgroundImage: profileImageUrl != null ? NetworkImage(profileImageUrl!) : null,
                               child: Container(
                                 margin: EdgeInsets.only(top: 45, left: 49),
                                 child: IconButton(
-                                    onPressed: () {},
-                                    icon: Icon(
-                                      Icons.add_a_photo_sharp,
-                                      size: 20,
-                                    )),
+                                  onPressed: _pickAndUploadImage,
+                                  icon: Icon(
+                                    Icons.add_a_photo_sharp,
+                                    color: Colors.white,
+                                    size: 20,
+                                  ),
+                                ),
                               ),
                             ),
                           ],
@@ -107,56 +197,88 @@ class _HomeState extends State<Home> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
+
                             Padding(padding: EdgeInsets.only(top: 60)),
-                            Container(
+                              Container(
                                 margin: EdgeInsets.only(left: 20),
                                 child: Text(
-                                  'Name',
+                                  'Hello !!',
                                   style: GoogleFonts.aBeeZee(
                                       color: Color.fromARGB(255, 255, 255, 255),
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15),
                                 )),
-                            Container(
-                                margin: EdgeInsets.only(left: 20),
-                                child: Text(
-                                  'USN',
-                                  style: GoogleFonts.aBeeZee(
-                                      color: Color.fromARGB(255, 255, 255, 255),
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 15),
-                                )),
+                            FutureBuilder<String>(
+                              future: _fetchFullName(),
+                              builder: (context, snapshot) {
+                                if (snapshot.connectionState == ConnectionState.waiting) {
+                                  return Container(
+                                    margin: EdgeInsets.only(left: 20),
+                                    child: Text(
+                                      'Loading...',
+                                      style: GoogleFonts.aBeeZee(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15),
+                                    ),
+                                  );
+                                } else if (snapshot.hasError) {
+                                  return Container(
+                                    margin: EdgeInsets.only(left: 20),
+                                    child: Text(
+                                      'Error',
+                                      style: GoogleFonts.aBeeZee(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15),
+                                    ),
+                                  );
+                                } else {
+                                  return Container(
+                                    margin: EdgeInsets.only(left: 20),
+                                    child: Text(
+                                      snapshot.data ?? 'No Name',
+                                      style: GoogleFonts.aBeeZee(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 15),
+                                    ),
+                                  );
+                                }
+                              },
+                            ),
+                          
                           ],
                         ),
                       ],
                     ),
                   ),
-                  ListTile(
-                    title: Text(
-                      'OnGoing',
-                      style: GoogleFonts.aBeeZee(),
-                    ),
-                    leading: Icon(Icons.live_tv),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const ongo()),
-                      );
-                    },
-                  ),
-                  ListTile(
-                    title: Text(
-                      'Completed',
-                      style: GoogleFonts.aBeeZee(),
-                    ),
-                    leading: Icon(Icons.star),
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (context) => const complete()),
-                      );
-                    },
-                  ),
+                  // ListTile(
+                  //   title: Text(
+                  //     'OnGoing',
+                  //     style: GoogleFonts.aBeeZee(),
+                  //   ),
+                  //   leading: Icon(Icons.live_tv),
+                  //   onTap: () {
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => const ongo()),
+                  //     );
+                  //   },
+                  // ),
+                  // ListTile(
+                  //   title: Text(
+                  //     'Completed',
+                  //     style: GoogleFonts.aBeeZee(),
+                  //   ),
+                  //   leading: Icon(Icons.star),
+                  //   onTap: () {
+                  //     Navigator.push(
+                  //       context,
+                  //       MaterialPageRoute(builder: (context) => const complete()),
+                  //     );
+                  //   },
+                  // ),
                   ListTile(
                       title: Text(
                         'Sign-Out',
@@ -214,7 +336,7 @@ class _HomeState extends State<Home> {
                             ),
                           )),
                   SizedBox(
-                    height: 90,
+                    height: 210,
                   ),
                   Center(
                     child: Container(
@@ -228,16 +350,16 @@ class _HomeState extends State<Home> {
                             ),
                           );
 
-                          if (result != null && result is addevent.EventDetails) {
+                          if (result != null && result is event_model.EventDetails) {
                             setState(() {
-                              events.add(EventDetails(
+                              events.add(event_model.EventDetails(
                                 eventName: result.eventName,
-                                speakerName:result.speakerName,
+                                speakerName: result.speakerName,
                                 dateTime: result.dateTime,
-                                stageName:result.stageName,
-                                stageCapacity:result.stageCapacity,
+                                stageName: result.stageName,
+                                stageCapacity: result.stageCapacity,
                                 description: result.description,
-                                image: result.image,
+                                image: result.image, id: '', creatorId: '',
                               ));
                             });
                           }
@@ -263,7 +385,7 @@ class _HomeState extends State<Home> {
                         ),
                         style: ButtonStyle(
                             backgroundColor:
-                                WidgetStateProperty.all(CustomColors.buttoncolor)),
+                                MaterialStateProperty.all(CustomColors.buttoncolor)),
                       ),
                     ),
                   ),
@@ -273,7 +395,7 @@ class _HomeState extends State<Home> {
             body: TabBarView(
               children: [
                 FirstTab(events: events),
-                secondtab(),
+                SecondTab(),
               ],
             ),
           ),

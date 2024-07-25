@@ -49,7 +49,8 @@ class AuthService with ChangeNotifier {
       return firebaseUser != null ? UserModel(id: firebaseUser.uid, email: firebaseUser.email) : null;
     });
   }
-   Future<UserModel?> getUserDetails() async {
+
+  Future<UserModel?> getUserDetails() async {
     try {
       User? firebaseUser = _auth.currentUser;
       if (firebaseUser != null) {
@@ -66,5 +67,18 @@ class AuthService with ChangeNotifier {
       print("Error fetching user details: $e");
     }
     return null;
+  }
+
+  Future<bool> checkIfEmailExists(String email) async {
+    final result = await _db.collection('users').where('email', isEqualTo: email).get();
+    return result.docs.isNotEmpty;
+  }
+
+  Future<void> sendPasswordResetEmail(String email) async {
+    try {
+      await _auth.sendPasswordResetEmail(email: email);
+    } catch (e) {
+      print("Error sending password reset email: $e");
+    }
   }
 }

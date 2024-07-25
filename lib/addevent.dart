@@ -1,29 +1,12 @@
 import 'dart:io';
-
 import 'theme/colors.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-
-class EventDetails {
-  String eventName;
-  String speakerName;
-  String stageName;
-  String stageCapacity;
-  DateTime? dateTime;
-  String description;
-  File? image;
-
-  EventDetails({
-    required this.eventName,
-    required this.speakerName,
-    required this.stageName,
-    required this.stageCapacity,
-    required this.dateTime,
-    required this.description,
-    this.image,
-  });
-}
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'event_model.dart'; // Import the EventModel class
 
 class Addevent extends StatefulWidget {
   const Addevent({Key? key}) : super(key: key);
@@ -81,17 +64,58 @@ class _AddeventState extends State<Addevent> {
     }
   }
 
-  void _submitEvent() {
-    // Save event details and navigate back
-    EventDetails newEvent = EventDetails(
+  Future<String?> _uploadImage(File image) async {
+    try {
+      if (!await image.exists()) {
+        print('File does not exist.');
+        return null;
+      }
+
+      final storageRef = FirebaseStorage.instance.ref();
+      final imageRef = storageRef.child('event_images/${DateTime.now().millisecondsSinceEpoch}.jpg');
+      print('Uploading image to: ${imageRef.fullPath}');
+
+      final uploadTask = imageRef.putFile(image);
+      final taskSnapshot = await uploadTask;
+
+      if (taskSnapshot.state == TaskState.success) {
+        final downloadURL = await imageRef.getDownloadURL();
+        print('Image uploaded successfully. Download URL: $downloadURL');
+        return downloadURL;
+      } else {
+        print('Image upload failed. Task state: ${taskSnapshot.state}');
+        return null;
+      }
+    } catch (e) {
+      print('Image upload failed: $e');
+      return null;
+    }
+  }
+
+  Future<void> _submitEvent() async {
+    String? imageUrl;
+    if (_selectedImage != null) {
+      imageUrl = await _uploadImage(_selectedImage!);
+    }
+
+    String creatorId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    if (creatorId.isEmpty) {
+      print('Error: User is not logged in');
+      return;
+    }
+
+    EventModel newEvent = EventModel(
       eventName: _eventNameController.text,
       speakerName: _speakerNameController.text,
       stageName: _stageNameController.text,
       stageCapacity: _stageCapacityController.text,
       dateTime: _selectedDateTime,
       description: _descriptionController.text,
-      image: _selectedImage,
+      imageUrl: imageUrl,
+      creatorId: creatorId, // Set the creatorId here
     );
+
+    await FirebaseFirestore.instance.collection('events').add(newEvent.toMap());
 
     Navigator.pop(context, newEvent);
   }
@@ -99,11 +123,11 @@ class _AddeventState extends State<Addevent> {
   List<Step> getSteps() {
     return [
       Step(
-        title: Text('Event Name'),
+        title: const Text('Event Name'),
         content: TextField(
           controller: _eventNameController,
           cursorColor: CustomColors.buttoncolor,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
@@ -118,11 +142,11 @@ class _AddeventState extends State<Addevent> {
         isActive: true,
       ),
       Step(
-        title: Text('Speaker Name'),
+        title: const Text('Speaker Name'),
         content: TextField(
           controller: _speakerNameController,
           cursorColor: CustomColors.buttoncolor,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
@@ -137,11 +161,11 @@ class _AddeventState extends State<Addevent> {
         isActive: true,
       ),
       Step(
-        title: Text('Stage Name'),
+        title: const Text('Stage Name'),
         content: TextField(
           controller: _stageNameController,
           cursorColor: CustomColors.buttoncolor,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
@@ -156,11 +180,11 @@ class _AddeventState extends State<Addevent> {
         isActive: true,
       ),
       Step(
-        title: Text('Stage Capacity'),
+        title: const Text('Stage Capacity'),
         content: TextField(
           controller: _stageCapacityController,
           cursorColor: CustomColors.buttoncolor,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
@@ -194,7 +218,7 @@ class _AddeventState extends State<Addevent> {
           controller: _descriptionController,
           maxLines: 3,
           cursorColor: CustomColors.buttoncolor,
-          decoration: InputDecoration(
+          decoration: const InputDecoration(
             border: OutlineInputBorder(
               borderRadius: BorderRadius.all(Radius.circular(10)),
             ),
@@ -236,7 +260,7 @@ class _AddeventState extends State<Addevent> {
         backgroundColor: CustomColors.buttoncolor,
         actions: [
           Container(
-            margin: EdgeInsets.only(right: 10),
+            margin: const EdgeInsets.only(right: 10),
             child: TextButton(
               onPressed: _submitEvent,
               child: Text(
@@ -299,7 +323,7 @@ class _AddeventState extends State<Addevent> {
                 ElevatedButton(
                   onPressed: details.onStepCancel,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: Color.fromARGB(255, 113, 149, 228),
+                    backgroundColor: const Color.fromARGB(255, 113, 149, 228),
                   ),
                   child: const Text('CANCEL', style: TextStyle(color: Colors.white)),
                 ),

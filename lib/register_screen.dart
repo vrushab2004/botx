@@ -19,7 +19,7 @@ class RegisterScreen extends StatelessWidget {
           children: [
             TextField(
               controller: fullNameController,
-              decoration: const InputDecoration(labelText: 'Full Name'),
+              decoration: const InputDecoration(labelText: 'USN'),
             ),
             TextField(
               controller: emailController,
